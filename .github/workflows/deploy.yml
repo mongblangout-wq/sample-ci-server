@@ -1,13 +1,80 @@
-name: Deploy to EC2
+name: 내 애플리케이션 CI/CD 파이프라인 구축
 
+# 1️⃣ Trigger 규칙 설정 (main 브랜치에 코드가 push될 때 자동 실행)
 on:
   push:
-    branches:
-      - master
+    branches: [ "main" ]
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  # 2️⃣ CI (지속적 통합) 파이프라인 구축
+  CI-Pipeline:
+    runs-on: ubuntu-latest # Runner: workflow를 실행시키는 가상 서버
+
     steps:
-      - name: Sandbox Test
-        run: echo "Hello GitHub Actions!"
+      # 가상 서버로 소스코드 체크아웃 (actions 플랫폼 제공 특수 Application)
+      - name: 소스코드 체크아웃
+        uses: actions/checkout@v4
+
+      # 개발 환경 구축을 위한 Node.js 설치
+      - name: Node.js 런타임 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # 의존성 파일 설치 (교재 17, 28페이지 안정적인 CI 작업 요건)
+      - name: 필요한 의존성 파일 설치
+        run: npm ci
+
+      # 단위 테스트 실행 및 검증 (교재 28페이지 요건)
+      - name: Unit Test 검증
+        run: npm run test -- --passWithNoTests
+
+      # build 명령어 실행 (교재 17, 28페이지 안정적인 CI 작업 요건)
+      - name: 빌드(build) 명령어 실행
+        run: npm run build
+
+      # 빌드 결과물을 작업 간 공유 및 저장을 위해 Artifact로 업로드 (교재 29페이지 요건)
+      - name: 빌드 결과물 저장 (Artifacts Upload)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: |
+            dist/
+            package.json
+            package-lock.json
+
+  # 3️⃣ CD (지속적 배포) 파이프라인 구축
+  CD-Pipeline:
+    needs: CI-Pipeline # CI 파이프라인이 에러 없이 성공(Success)해야만 배포 진행
+    runs-on: ubuntu-latest
+
+    steps:
+      # GitHub 스토리지에 보관된 빌드 결과물 다운로드 (교재 30페이지 요건)
+      - name: 빌드 결과물 다운 (Artifacts Download)
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+
+      # scp 명령어를 통해 빌드 결과물을 운영 서버 호스트로 안전하게 전송 (교재 30페이지 요건)
+      # AWS 계정 및 비밀번호 등 노출 위험이 있는 정보는 암호화 변수(Secrets)로 처리 (교재 13, 31페이지 요건)
+      - name: 빌드 파일 EC2 전송 (scp 실행)
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "dist/,package.json,package-lock.json"
+          target: "~/sample-server"
+
+      # 기존 프로세스를 안전하게 종료하고 PM2를 활용하여 새 프로세스로 실행 (교재 24, 30페이지 요건)
+      - name: 원격 SSH 접속 및 신규 프로세스 실행 (PM2)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/sample-server
+            npm install --production
+            pm2 reload all || pm2 start dist/main.js --name "nest-server"
