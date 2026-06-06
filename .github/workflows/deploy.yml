@@ -14,10 +14,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 💡 에러 원인이었던 괄호 문법 수정: $(git rev-parse) 형태로 변경
     - name: Generate version
       id: version
       run: |
-        echo "version=$(date +Y%m%d_%H%M%S)-(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "version=$(date +Y%m%d_%H%M%S)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -71,7 +72,6 @@ jobs:
         source: "compose.yaml"
         target: "/home/ec2-user/sample-server"
 
-    # 💡 에러 원인인 플러그인을 제거하고 가장 안전한 원격 쉘 실행 방식으로 변경
     - name: Execute remote ssh commands
       run: |
         echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
