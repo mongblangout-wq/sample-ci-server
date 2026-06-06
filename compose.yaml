@@ -15,7 +15,7 @@ services:
     networks:
       - todo-network
 
-  # MySQL 데이터베이스 서비스 (교재 p.25)
+  # MySQL 데이터베이스 서비스
   db:
     image: mysql:8.0
     environment:

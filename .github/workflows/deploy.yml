@@ -19,6 +19,7 @@ jobs:
       run: |
         echo "version=$(date +Y%m%d_%H%M%S)-(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+    # 교재 p.11 멀티 플랫폼 빌더 작동
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
@@ -48,6 +49,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -59,6 +63,17 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
+    # 프로젝트 내 compose.yaml 파일을 EC2 서버로 먼저 안전하게 복사 전송
+    - name: Copy compose.yaml to EC2
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        source: "compose.yaml"
+        target: "/home/ec2-user/sample-server"
+
+    # EC2 원격 접속 후 교재 p.23 스크립트 기반 원격 실행
     - name: Deploy to EC2 via SSH
       uses: appleboy/ssh-action@v1.0.3
       with:
@@ -69,39 +84,13 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
-        script: [
-          "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY",
-          "mkdir -p ~/sample-server && cd ~/sample-server",
-          "echo 'ECR_REGISTRY='$ECR_REGISTRY > .env",
-          "echo 'IMAGE_TAG='$IMAGE_TAG >> .env",
-          "echo \"version: '3.8'\" > compose.yaml",
-          "echo \"services:\" >> compose.yaml",
-          "echo \"  web:\" >> compose.yaml",
-          "echo \"    image: \${ECR_REGISTRY}/sample-server:\${IMAGE_TAG}\" >> compose.yaml",
-          "echo \"    ports:\" >> compose.yaml",
-          "echo \"      - '3000:3000'\" >> compose.yaml",
-          "echo \"    environment:\" >> compose.yaml",
-          "echo \"      - DB_HOST=db\" >> compose.yaml",
-          "echo \"      - DB_USER=root\" >> compose.yaml",
-          "echo \"      - DB_PASSWORD=secret\" >> compose.yaml",
-          "echo \"    depends_on:\" >> compose.yaml",
-          "echo \"      - db\" >> compose.yaml",
-          "echo \"    networks:\" >> compose.yaml",
-          "echo \"      - todo-network\" >> compose.yaml",
-          "echo \"  db:\" >> compose.yaml",
-          "echo \"    image: mysql:8.0\" >> compose.yaml",
-          "echo \"    environment:\" >> compose.yaml",
-          "echo \"      - MYSQL_ROOT_PASSWORD=secret\" >> compose.yaml",
-          "echo \"      - MYSQL_DATABASE=todo\" >> compose.yaml",
-          "echo \"    volumes:\" >> compose.yaml",
-          "echo \"      - db-data:/var/lib/mysql\" >> compose.yaml",
-          "echo \"    networks:\" >> compose.yaml",
-          "echo \"      - todo-network\" >> compose.yaml",
-          "echo \"volumes:\" >> compose.yaml",
-          "echo \"  db-data:\" >> compose.yaml",
-          "echo \"networks:\" >> compose.yaml",
-          "echo \"  todo-network:\" >> compose.yaml",
-          "docker compose pull",
-          "docker compose up -d",
-          "docker image prune -f"
-        ]
+        script: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+          cd /home/ec2-user/sample-server
+          
+          echo "ECR_REGISTRY=$ECR_REGISTRY" > .env
+          echo "IMAGE_TAG=$IMAGE_TAG" >> .env
+          
+          docker compose pull
+          docker compose up -d
+          docker image prune -f
