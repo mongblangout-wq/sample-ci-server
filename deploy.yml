@@ -1,0 +1,120 @@
+name: Container CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ] # 본인의 기본 브랜치명이 master라면 master로 변경하세요!
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Generate version
+      id: version
+      run: |
+        echo "version=$(date +Y%m%d_%H%M%S)-(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+    # CPU 아키텍처 불일치로 인한 exec format error 방지 설정 (교재 p.11)
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        name: mybuilder
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Multi-Platform Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.login-ecr.outputs.registry }}/sample-server:${{ steps.version.outputs.version }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Deploy to EC2 via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        envs: IMAGE_TAG, ECR_REGISTRY
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
+        script: |
+          # AWS ECR 로그인 (교재 p.23)
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          # EC2 내부 배포 폴더 생성 및 이동
+          mkdir -p ~/sample-server && cd ~/sample-server
+          
+          # 환경 변수 저장
+          echo "ECR_REGISTRY=$ECR_REGISTRY" > .env
+          echo "IMAGE_TAG=$IMAGE_TAG" >> .env
+          
+          # 원격용 compose.yaml 파일 생성
+          cat << 'EOF' > compose.yaml
+          version: '3.8'
+          services:
+            web:
+              image: ${ECR_REGISTRY}/sample-server:${IMAGE_TAG}
+              ports:
+                - "3000:3000"
+              environment:
+                - DB_HOST=db
+                - DB_USER=root
+                - DB_PASSWORD=secret
+              depends_on:
+                - db
+              networks:
+                - todo-network
+            db:
+              image: mysql:8.0
+              environment:
+                - MYSQL_ROOT_PASSWORD=secret
+                - MYSQL_DATABASE=todo
+              volumes:
+                - db-data:/var/lib/mysql
+              networks:
+                - todo-network
+          volumes:
+            db-data:
+          networks:
+            todo-network:
+          EOF
+          
+          # 컨테이너 일괄 실행 (교재 p.23 변형)
+          docker compose pull
+          docker compose up -d
+          
+          # 오래된 구형 이미지 정리 (교재 p.23)
+          docker image prune -f

@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # To-Do 웹 애플리케이션 서비스
+  web:
+    image: ${ECR_REGISTRY}/sample-server:${IMAGE_TAG}
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=secret
+    depends_on:
+      - db
+    networks:
+      - todo-network
+
+  # MySQL 데이터베이스 서비스 (교재 p.25)
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_DATABASE=todo
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - todo-network
+
+volumes:
+  db-data:
+
+networks:
+  todo-network:
