@@ -69,42 +69,39 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.version }}
-        script: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
-          mkdir -p ~/sample-server && cd ~/sample-server
-          
-          echo "ECR_REGISTRY=$ECR_REGISTRY" > .env
-          echo "IMAGE_TAG=$IMAGE_TAG" >> .env
-          
-          # 들여쓰기 오류를 방지하기 위해 한 줄씩 직접 echo로 compose.yaml 파일 작성
-          echo "version: '3.8'" > compose.yaml
-          echo "services:" >> compose.yaml
-          echo "  web:" >> compose.yaml
-          echo "    image: \${ECR_REGISTRY}/sample-server:\${IMAGE_TAG}" >> compose.yaml
-          echo "    ports:" >> compose.yaml
-          echo "      - '3000:3000'" >> compose.yaml
-          echo "    environment:" >> compose.yaml
-          echo "      - DB_HOST=db" >> compose.yaml
-          echo "      - DB_USER=root" >> compose.yaml
-          echo "      - DB_PASSWORD=secret" >> compose.yaml
-          echo "    depends_on:" >> compose.yaml
-          echo "      - db" >> compose.yaml
-          echo "    networks:" >> compose.yaml
-          echo "      - todo-network" >> compose.yaml
-          echo "  db:" >> compose.yaml
-          echo "    image: mysql:8.0" >> compose.yaml
-          echo "    environment:" >> compose.yaml
-          echo "      - MYSQL_ROOT_PASSWORD=secret" >> compose.yaml
-          echo "      - MYSQL_DATABASE=todo" >> compose.yaml
-          echo "    volumes:" >> compose.yaml
-          echo "      - db-data:/var/lib/mysql" >> compose.yaml
-          echo "    networks:" >> compose.yaml
-          echo "      - todo-network" >> compose.yaml
-          echo "volumes:" >> compose.yaml
-          echo "  db-data:" >> compose.yaml
-          echo "networks:" >> compose.yaml
-          echo "  todo-network:" >> compose.yaml
-          
-          docker compose pull
-          docker compose up -d
-          docker image prune -f
+        script: [
+          "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY",
+          "mkdir -p ~/sample-server && cd ~/sample-server",
+          "echo 'ECR_REGISTRY='$ECR_REGISTRY > .env",
+          "echo 'IMAGE_TAG='$IMAGE_TAG >> .env",
+          "echo \"version: '3.8'\" > compose.yaml",
+          "echo \"services:\" >> compose.yaml",
+          "echo \"  web:\" >> compose.yaml",
+          "echo \"    image: \${ECR_REGISTRY}/sample-server:\${IMAGE_TAG}\" >> compose.yaml",
+          "echo \"    ports:\" >> compose.yaml",
+          "echo \"      - '3000:3000'\" >> compose.yaml",
+          "echo \"    environment:\" >> compose.yaml",
+          "echo \"      - DB_HOST=db\" >> compose.yaml",
+          "echo \"      - DB_USER=root\" >> compose.yaml",
+          "echo \"      - DB_PASSWORD=secret\" >> compose.yaml",
+          "echo \"    depends_on:\" >> compose.yaml",
+          "echo \"      - db\" >> compose.yaml",
+          "echo \"    networks:\" >> compose.yaml",
+          "echo \"      - todo-network\" >> compose.yaml",
+          "echo \"  db:\" >> compose.yaml",
+          "echo \"    image: mysql:8.0\" >> compose.yaml",
+          "echo \"    environment:\" >> compose.yaml",
+          "echo \"      - MYSQL_ROOT_PASSWORD=secret\" >> compose.yaml",
+          "echo \"      - MYSQL_DATABASE=todo\" >> compose.yaml",
+          "echo \"    volumes:\" >> compose.yaml",
+          "echo \"      - db-data:/var/lib/mysql\" >> compose.yaml",
+          "echo \"    networks:\" >> compose.yaml",
+          "echo \"      - todo-network\" >> compose.yaml",
+          "echo \"volumes:\" >> compose.yaml",
+          "echo \"  db-data:\" >> compose.yaml",
+          "echo \"networks:\" >> compose.yaml",
+          "echo \"  todo-network:\" >> compose.yaml",
+          "docker compose pull",
+          "docker compose up -d",
+          "docker image prune -f"
+        ]
