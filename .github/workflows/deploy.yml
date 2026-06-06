@@ -14,7 +14,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 💡 에러 원인이었던 괄호 문법 수정: $(git rev-parse) 형태로 변경
     - name: Generate version
       id: version
       run: |
@@ -42,7 +41,7 @@ jobs:
         context: .
         platforms: linux/amd64,linux/arm64
         push: true
-        tags: ${{ steps.login-ecr.outputs.registry }}/sample-server:${{ steps.version.outputs.version }}
+        tags: ${{ steps.login-ecr.outputs.registry }}/sample-server:${{ secrets.version.outputs.version }}
 
   deploy:
     needs: build-and-push
@@ -79,8 +78,12 @@ jobs:
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           cd /home/ec2-user/sample-server
-          touch .env
-          docker compose pull
-          docker compose up -d
+          
+          echo 'ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}' > .env
+          echo 'IMAGE_TAG=${{ needs.build-and-push.outputs.version }}' >> .env
+          
+          # 수동 설치 버전 대시(-) 규격으로 명령어 변경 (교재 p.23 변형)
+          docker-compose pull
+          docker-compose up -d
           docker image prune -f
         "
