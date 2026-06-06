@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main" ]
 
-# Node.js 24 강제 적용 환경 변수 추가로 경고 메시지 사전 차단
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -21,7 +20,6 @@ jobs:
     - name: Generate version
       id: version
       run: |
-        # 환경 변수와 outputs 영역에 버전을 각각 안전하게 이중 기록합니다.
         VERSION_TAG="$(date +Y%m%d_%H%M%S)-$(git rev-parse --short HEAD)"
         echo "version=$VERSION_TAG" >> $GITHUB_OUTPUT
         echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
@@ -48,7 +46,6 @@ jobs:
         context: .
         platforms: linux/amd64,linux/arm64
         push: true
-        # 💡 주입 실패를 방지하기 위해 무결성이 검증된 GITHUB_ENV 스코프 변수 사용
         tags: ${{ steps.login-ecr.outputs.registry }}/sample-server:${{ env.VERSION_TAG }}
 
   deploy:
@@ -90,7 +87,8 @@ jobs:
           echo 'ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}' > .env
           echo 'IMAGE_TAG=${{ needs.build-and-push.outputs.version }}' >> .env
           
+          # 💡 명령어 누락 방지를 위해 대시(-) 규격으로 완전히 연동을 마무리합니다.
           docker-compose pull
           docker-compose up -d
-          docker image prune -f
+          docker-compose rm -f || true
         "
